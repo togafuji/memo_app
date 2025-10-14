@@ -13,4 +13,8 @@
 - `docs/frontend-ui.md`: Vue コンポーネント構成と UI/UX ガイドライン。
 - `docs/backend-summary.md`: 要約やタグ付けに関するバックエンドロジックの検討。
 
+## 実装
+- `backend/`: Sinatra + graphql-ruby で構築した簡易 GraphQL API。`bundle exec rackup` で起動できます。
+- `frontend/`: Vite + Vue 3 (TypeScript) の SPA。`npm install && npm run dev` で起動できます。
+
 今後、各ドキュメントを基に実装を進めていきます。
