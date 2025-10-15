@@ -1,50 +1,55 @@
 # frozen_string_literal: true
 
-require 'monitor'
 require 'date'
+require 'time'
 
 module MemoApp
   module Repositories
     class DailyPageRepository
-      def initialize
-        @pages = {}
-        @monitor = Monitor.new
+      def initialize(database)
+        @database = database
       end
 
       def all
-        @pages.values.map { |page| deep_dup(page) }
+        records = @database.select('SELECT * FROM daily_pages ORDER BY entry_date DESC')
+        records.map { |attrs| build_entity(attrs) }
       end
 
       def find(id)
-        @monitor.synchronize { deep_dup(@pages[id]) }
+        record = @database.select_one('SELECT * FROM daily_pages WHERE id = ?', [id])
+        record && build_entity(record)
       end
 
       def find_by_date(user_id:, entry_date:)
         date = normalize(entry_date)
-        @monitor.synchronize do
-          @pages.values.find do |page|
-            page.user_id == user_id && page.entry_date == date
-          end&.yield_self { |page| deep_dup(page) }
-        end
+        record = @database.select_one(
+          'SELECT * FROM daily_pages WHERE user_id = ? AND entry_date = ?',
+          [user_id, date.strftime('%Y-%m-%d')]
+        )
+        record && build_entity(record)
       end
 
       def ensure_page(user_id:, entry_date:)
         date = normalize(entry_date)
-        @monitor.synchronize do
-          existing = @pages.values.find do |page|
-            page.user_id == user_id && page.entry_date == date
-          end
-          return deep_dup(existing) if existing
+        existing = find_by_date(user_id: user_id, entry_date: date)
+        return existing if existing
 
-          page = Entities::DailyPage.new(
-            id: SecureRandom.uuid,
-            user_id: user_id,
-            entry_date: date,
-            cached_summary: nil
-          )
-          @pages[page.id] = page
-          deep_dup(page)
-        end
+        now = Time.now.utc
+        page = Entities::DailyPage.new(
+          id: SecureRandom.uuid,
+          user_id: user_id,
+          entry_date: date,
+          cached_summary: nil
+        )
+        @database.insert('daily_pages', {
+                            id: page.id,
+                            user_id: page.user_id,
+                            entry_date: page.entry_date.strftime('%Y-%m-%d'),
+                            cached_summary: page.cached_summary,
+                            created_at: now,
+                            updated_at: now
+                          })
+        page
       end
 
       private
@@ -55,10 +60,13 @@ module MemoApp
         Date.parse(value.to_s)
       end
 
-      def deep_dup(page)
-        return if page.nil?
-
-        Entities::DailyPage.new(**page.to_h.deep_dup)
+      def build_entity(record)
+        Entities::DailyPage.new(
+          id: record[:id],
+          user_id: record[:user_id],
+          entry_date: Date.parse(record[:entry_date].to_s),
+          cached_summary: record[:cached_summary]
+        )
       end
     end
   end
